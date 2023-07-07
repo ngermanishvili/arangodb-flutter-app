@@ -1,6 +1,10 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/services.dart';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const AuthenticationApp());
@@ -30,26 +34,69 @@ class _AuthorizationPageState extends State<AuthorizationPage> {
   final TextEditingController _phoneNumberController = TextEditingController();
   final TextEditingController _smsCodeController = TextEditingController();
   bool _showSmsCodeField = false;
+  bool _showVerifyButton = false;
 
   Future<void> sendSms(String phoneNumber) async {
-    const url = 'https://db.kheti-badi.com/_db/kb-2023/verify/createSession';
+    const url = 'https://db.kheti-badi.com/_db/kb-2023/samxara/createSession';
     const headers = {
       'accept': 'application/json',
       'Content-Type': 'application/json',
       'Authorization':
           'bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwcmVmZXJyZWRfdXNlcm5hbWUiOiJmcmVlbGFuY2VyIiwiaXNzIjoiYXJhbmdvZGIiLCJpYXQiOjE2ODg2MzEzMzEsImV4cCI6MTY4ODYzNDkzMX0.uTs7Un-_afS3tNVVIFNlMWPpRDlyCma9ydrj78S9AVs',
     };
-    final body = {'phoneNumber': phoneNumber};
+    final body = jsonEncode({'phoneNumber': phoneNumber});
 
     final response =
         await http.post(Uri.parse(url), headers: headers, body: body);
 
     if (response.statusCode == 200) {
+      final responseData = json.decode(response.body);
+      final sessionId = responseData['sessionId'];
+
       setState(() {
         _showSmsCodeField = true;
+        _showVerifyButton = true;
       });
+
+      final SharedPreferences sharedPreferences =
+          await SharedPreferences.getInstance();
+      sharedPreferences.setString('sessionId', sessionId);
     } else {
       print('Failed to send SMS');
+    }
+  }
+
+  Future<void> verifyOtp(String otp) async {
+    const url = 'https://db.kheti-badi.com/_db/kb-2023/samxara/verifyOTP';
+    const headers = {
+      'accept': 'application/json',
+      'Content-Type': 'application/json',
+      'Authorization':
+          'bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwcmVmZXJyZWRfdXNlcm5hbWUiOiJmcmVlbGFuY2VyIiwiaXNzIjoiYXJhbmdvZGIiLCJpYXQiOjE2ODg2MzEzMzEsImV4cCI6MTY4ODYzNDkzMX0.uTs7Un-_afS3tNVVIFNlMWPpRDlyCma9ydrj78S9AVs',
+    };
+
+    final sharedPreferences = await SharedPreferences.getInstance();
+    final sessionId = sharedPreferences.getString('sessionId');
+
+    if (sessionId != null) {
+      final body = jsonEncode({
+        'sessionId': otp,
+      });
+
+      final response =
+          await http.post(Uri.parse(url), headers: headers, body: body);
+
+      if (response.statusCode == 200) {
+        // OTP verification successful
+        // TODO: Handle the successful verification case
+        print(response.body);
+      } else {
+        // OTP verification failed
+        print('Failed to verify OTP. Status code: ${response.statusCode}');
+        print('Response body: ${response.body}');
+      }
+    } else {
+      print('SessionId is null');
     }
   }
 
@@ -147,6 +194,27 @@ class _AuthorizationPageState extends State<AuthorizationPage> {
                       ),
                       keyboardType: TextInputType.number,
                       style: const TextStyle(fontSize: 18),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        final otp = _smsCodeController.text;
+                        await verifyOtp(otp);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        primary: Colors.blue,
+                        padding: const EdgeInsets.all(16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text(
+                        'Verify',
+                        style: TextStyle(fontSize: 18),
+                      ),
                     ),
                   ),
                 ],
