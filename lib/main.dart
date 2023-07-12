@@ -1,13 +1,72 @@
-import 'dart:math';
+import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:flutter/services.dart';
-import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const AuthenticationApp());
+}
+
+class SecondDartScreen extends StatelessWidget {
+  final Function resetAuthorizationPage;
+
+  const SecondDartScreen({Key? key, required this.resetAuthorizationPage})
+      : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('OTP Verification Was Successful'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            resetAuthorizationPage();
+            Navigator.pop(context);
+          },
+        ),
+      ),
+      body: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Center(
+              child: Text(
+                'Welcome!',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          ShaderMask(
+            blendMode: BlendMode.srcATop,
+            shaderCallback: (Rect bounds) {
+              return LinearGradient(
+                colors: [Colors.grey.shade200, Colors.grey.shade500],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ).createShader(bounds);
+            },
+            child: Container(
+              alignment: Alignment.bottomCenter,
+              child: Text(
+                'Powered By Xsoft',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class AuthenticationApp extends StatelessWidget {
@@ -35,6 +94,55 @@ class _AuthorizationPageState extends State<AuthorizationPage> {
   final TextEditingController _smsCodeController = TextEditingController();
   bool _showSmsCodeField = false;
   bool _showVerifyButton = false;
+  int _timerSeconds = 60;
+  Timer? _timer;
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _clearInputs();
+  }
+  void startTimer() {
+    _timerSeconds = 30;
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      setState(() {
+        if (_timerSeconds >= 0) {
+          _timerSeconds--;
+          if (_timerSeconds == 0) {
+            _timer?.cancel();
+            _showSmsCodeField = false;
+          }
+        } else {
+          _timer?.cancel();
+        }
+      });
+    });
+  }
+
+  void _clearInputs() {
+    _phoneNumberController.clear();
+    _smsCodeController.clear();
+    _showSmsCodeField = false;
+    _showVerifyButton = false;
+    _timerSeconds = 60;
+  }
+
+  void _cancelTimer() {
+    _timer?.cancel();
+  }
+
+  void cancelTimerAndHideSmsField() {
+    _cancelTimer();
+    setState(() {
+      _showSmsCodeField = false;
+    });
+  }
 
   Future<void> sendSms(String phoneNumber) async {
     const url = 'https://db.kheti-badi.com/_db/kb-2023/samxara/createSession';
@@ -58,9 +166,7 @@ class _AuthorizationPageState extends State<AuthorizationPage> {
         _showVerifyButton = true;
       });
 
-      final SharedPreferences sharedPreferences =
-          await SharedPreferences.getInstance();
-      sharedPreferences.setString('sessionId', sessionId);
+      startTimer();
     } else {
       print('Failed to send SMS');
     }
@@ -82,16 +188,22 @@ class _AuthorizationPageState extends State<AuthorizationPage> {
       final body = jsonEncode({
         'sessionId': otp,
       });
-
       final response =
           await http.post(Uri.parse(url), headers: headers, body: body);
 
       if (response.statusCode == 200) {
-        // OTP verification successful
-        // TODO: Handle the successful verification case
-        print(response.body);
+        _resetAuthorizationPage();
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => SecondDartScreen(
+              resetAuthorizationPage: _resetAuthorizationPage,
+            ),
+          ),
+        ).then((_) {
+          cancelTimerAndHideSmsField();
+        });
       } else {
-        // OTP verification failed
         print('Failed to verify OTP. Status code: ${response.statusCode}');
         print('Response body: ${response.body}');
       }
@@ -100,7 +212,10 @@ class _AuthorizationPageState extends State<AuthorizationPage> {
     }
   }
 
-  
+  void _resetAuthorizationPage() {
+    _cancelTimer();
+    _clearInputs();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -174,12 +289,24 @@ class _AuthorizationPageState extends State<AuthorizationPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 16),
-                  const Text(
-                    'Enter the SMS code:',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  Row(
+                    children: [
+                      const Text(
+                        'Enter the SMS code:',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '$_timerSeconds seconds',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   Container(
@@ -221,6 +348,26 @@ class _AuthorizationPageState extends State<AuthorizationPage> {
                   ),
                 ],
               ),
+            const Spacer(),
+            Center(
+              child: ShaderMask(
+                blendMode: BlendMode.srcATop,
+                shaderCallback: (Rect bounds) {
+                  return LinearGradient(
+                    colors: [Colors.grey.shade200, Colors.grey.shade500],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ).createShader(bounds);
+                },
+                child: Text(
+                  'Powered By Xsoft',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
